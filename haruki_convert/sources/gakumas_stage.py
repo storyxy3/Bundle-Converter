@@ -1,14 +1,15 @@
-"""Gakumas stage scene -> haruki-external-stage/0 with the target game's stage materials (profiles/<target>.json "stage").
+"""Gakumas stage scene -> haruki-external-stage/1 with the target game's stage materials (profiles/<target>.json "stage").
 
 Format haruki-external-stage/1 (arrays only, no nulls: Unity's JsonUtility reads it). Output (out dir): stage.json (meshes, textures, materials as target shaders + properties, renderers with world TRS and
 lightmap UV scale/offset), geometry.bin (per mesh: positions, normals, uv0, uv1 float32, then submesh indices uint32),
-textures/*.png (albedo RGBA8 x _BaseColor; the scene lightmap RGB8).
+textures/*.png (albedo RGBA8 x _BaseColor); BC6H lightmaps are linear RGBAHalf .bin (bottom row first).
 
 Material mapping (PJSK target): Environment/Default and the canvases -> stage.shaders.opaque / cutout / transparent;
 main texture = albedo; lightmap texture = the scene lightmap, uv1 = lightmap UV x the renderer's scale/offset (applied by
 the player per renderer); renderers without a lightmap get a neutral 4x4 lightmap. `vertexColor` carries the exposure.
 Only LOD 0 of each LODGroup is kept; meshes without an index buffer are skipped (counted).
 """
+import ctypes
 import json
 from pathlib import Path
 
@@ -17,12 +18,67 @@ from PIL import Image
 from UnityPy.helpers.MeshHelper import MeshHandler
 
 from .. import profiles
+from ..unity_clip import Clip
 from ..unity_assets import Assets, Transforms, decompose
 
 FORMAT = "haruki-external-stage/1"  # /1: JsonUtility-friendly (arrays, no null), consumed by the player
 
 
-def export(bundles_dir, scene, out, target="pjsk"):
+def layout_placement(bundle, unity_version):
+    """Static Actor_00 placement relative to an identity layout root; reject animated origins."""
+    a = Assets([bundle], unity_version)
+    layouts = [o for o in a.of_type("MonoBehaviour")
+               if o.read_typetree().get("baseAnimation", {}).get("clip", {}).get("m_PathID")]
+    if len(layouts) != 1:
+        raise ValueError("Expected one layout definition with baseAnimation.clip")
+    definition = layouts[0]
+    clip = Clip(a.deref(definition, definition.read_typetree()["baseAnimation"]["clip"]).read_typetree())
+    origin = None
+    for path in ("", "Actor_00"):
+        for attr, identity in (("position", [0, 0, 0]), ("euler", [0, 0, 0]),
+                               ("rotation", [0, 0, 0, 1]), ("scale", [1, 1, 1])):
+            ci = clip.transform(path, attr)
+            if ci is None:
+                continue
+            if any(clip.kind(ci + k) != "const" for k in range(len(identity))):
+                raise ValueError("Layout origin must be static")
+            value = [clip.sample(ci + k, clip.start) for k in range(len(identity))]
+            if path == "Actor_00" and attr == "position":
+                origin = value
+            elif not np.allclose(value, identity):
+                raise ValueError("Layout requires rotation/scale composition, unsupported")
+    if origin is None:
+        raise ValueError("Layout has no Actor_00 position")
+    return {"origin": origin, "offset": [-v for v in origin],
+            "sourceBundle": str(bundle), "sourceClip": clip.name, "actor": "Actor_00"}
+
+
+def bc6h_rgba_half(t):
+    """Use etcpak's bundled bcdec CPU decoder, retaining HDR (UnityPy's PIL path clamps)."""
+    import etcpak
+    try:
+        decode = ctypes.CDLL(etcpak._etcpak_none.__file__).bcdec_bc6h_half
+    except (AttributeError, OSError) as e:
+        raise RuntimeError("HDR export requires etcpak with exported bcdec_bc6h_half (Linux etcpak 0.9.15)") from e
+    decode.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+    decode.restype = None
+    w, h = t.m_Width, t.m_Height
+    raw = t.get_image_data()
+    bw, bh = (w + 3) // 4, (h + 3) // 4
+    if len(raw) < bw * bh * 16:
+        raise ValueError("Truncated BC6H base mip")
+    src = ctypes.create_string_buffer(raw)
+    rgb = np.empty((bh * 4, bw * 4, 3), dtype=np.float16)
+    for y in range(bh):
+        for x in range(bw):
+            decode(ctypes.addressof(src) + (y * bw + x) * 16,
+                   rgb.ctypes.data + (y * 4 * bw * 4 + x * 4) * 6, bw * 4 * 3, 0)
+    rgba = np.ones((h, w, 4), dtype="<f2")
+    rgba[..., :3] = rgb[:h, :w]
+    return rgba
+
+
+def export(bundles_dir, scene, out, target="pjsk", layout_bundle=None):
     src = profiles.load("gakumas")
     tgt = profiles.load(target)["stage"]
     bdir, out = Path(bundles_dir), Path(out)
@@ -66,10 +122,18 @@ def export(bundles_dir, scene, out, target="pjsk"):
         key = (tobj.assets_file.name, tobj.path_id, "lightmap")
         if key not in tex_index:
             t = tobj.read()
-            img = t.image.convert("RGB")  # BC6H HDR through UnityPy: 8-bit, clamped
-            arr = np.asarray(img).astype(np.float32) / 255.0
-            stats = {"p50": float(np.percentile(arr, 50)), "p99": float(np.percentile(arr, 99)), "saturated": float((arr >= 0.999).mean())}
-            tex_index[key] = add_texture(img, t.m_Name, {"colorSpace": "linear", "lightmap": True, "decode": "unitypy-8bit", "stats": stats})
+            if t.m_TextureFormat != 24:
+                raise ValueError(f"Unsupported lightmap encoding {t.m_TextureFormat}; expected PC BC6H")
+            rgba = bc6h_rgba_half(t)
+            arr = rgba[..., :3].astype(np.float32)
+            stats = {"p50": float(np.percentile(arr, 50)), "p99": float(np.percentile(arr, 99)),
+                     "max": float(arr.max()), "aboveOne": float((arr > 1).mean())}
+            name = f"textures/{len(textures):03d}_{t.m_Name}.rgba16f.bin"
+            (out / name).write_bytes(rgba.tobytes())
+            tex_index[key] = len(textures)
+            textures.append({"file": name, "width": t.m_Width, "height": t.m_Height,
+                             "encoding": "rgba16f", "colorSpace": "linear", "lightmap": True,
+                             "decode": "bcdec-unsigned-bc6h", "stats": stats})
         return tex_index[key]
 
     neutral = []
@@ -178,7 +242,7 @@ def export(bundles_dir, scene, out, target="pjsk"):
             continue
         lmi = t.get("m_LightmapIndex", 65535)
         lightmapped = lmi < len(scene_lightmaps) and scene_lightmaps[lmi] is not None
-        so = t.get("m_LightmapScaleOffset", {"x": 1, "y": 1, "z": 0, "w": 0})
+        so = t["m_LightmapTilingOffset"] if lightmapped else {"x": 1, "y": 1, "z": 0, "w": 0}
         pos, rot, scl = decompose(tf.world(tobj))
         mi = mesh(mo)
         if mi is None:
@@ -196,6 +260,8 @@ def export(bundles_dir, scene, out, target="pjsk"):
            "vertexColor": tgt["vertexColor"], "lightmapUv": tgt["lightmapUv"], "lightmapTexture": tgt["lightmapTexture"],
            "note": tgt.get("note", ""),
            "textures": textures, "materials": materials, "meshes": meshes, "renderers": renderers, "skipped": skipped}
+    if layout_bundle is not None:
+        doc["placement"] = layout_placement(layout_bundle, src["unityVersion"])
     (out / "stage.json").write_text(json.dumps(doc, indent=1, ensure_ascii=False))
     size = (out / "geometry.bin").stat().st_size
     print(f"stage: {len(renderers)} renderers (skipped {skipped}), {len(meshes)} meshes, {sum(m['vertexCount'] for m in meshes)} vertices, "

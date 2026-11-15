@@ -5,7 +5,7 @@
 #   jp01.sh bake [frames] [render secs]   Humanoid curves -> target bone curves (unity/HumanoidBake), report, stick renders
 #   jp01.sh ground [motion]               the baked motion on the original PJSK model on a flat ground + seek pre-roll check
 #                                         (PlayMode test ExternalMotionGround of unity/Haruki3DMV)
-# Env: CV_MOTION (curves name, default hski_all001), CV_MOTION_BUNDLE, CV_SCENE, CV_STAGE_BUNDLES, CV_STAGE_OUT,
+# Env: CV_MOTION (curves name, default hski_all001), CV_MOTION_BUNDLE, CV_SCENE, CV_STAGE_BUNDLES, CV_STAGE_OUT, CV_STAGE_LAYOUT,
 #      HB_RANGE=start,end, HB_TRAVEL=keep|inplace, HB_TRAVEL_SCALE, EM_RENDER, EM_PROBES, EM_PREROLL, EM_FPS.
 # Work root on JP01: /work/motion-bake (converter/ code copy, data/, out/, stage/, unity/ HumanoidBake project,
 # haruki3dmv/ player project copy).
@@ -23,6 +23,7 @@ motion_bundle=${CV_MOTION_BUNDLE:-$gk/dmm/octo/mot_live_chr_hski_all-001_00_in.u
 scene=${CV_SCENE:-env_3d_live_all001-00-noon}
 stage_bundles=${CV_STAGE_BUNDLES:-$gk/work/live_all001/pc/bundles}
 stage_out=${CV_STAGE_OUT:-$work/stage/all001}
+stage_layout=${CV_STAGE_LAYOUT:-$gk/dmm/octo/mot_live_all-001_in_layout.unity3d}
 cv="$py -I $work/converter/convert.py"
 
 sync_converter() {
@@ -39,7 +40,7 @@ case "${1:-}" in
     ;;
   stage)
     sync_converter
-    ssh $host "rm -rf $stage_out && $cv stage --game gakumas --bundles $stage_bundles --scene $scene --out $stage_out" 2>&1 | grep -v -i "warning\|version_str"
+    ssh $host "rm -rf $stage_out && $cv stage --game gakumas --bundles $stage_bundles --scene $scene --layout-bundle $stage_layout --out $stage_out" 2>&1 | grep -v -i "warning\|version_str"
     ;;
   bake)
     frames=${2:-}; times=${3:-}

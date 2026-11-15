@@ -21,7 +21,7 @@ def main():
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("skeleton"); s.add_argument("--game", required=True); s.add_argument("--bundle", required=True); s.add_argument("--out", required=True); s.add_argument("--root")
     s = sub.add_parser("humanoid-curves"); s.add_argument("--game", required=True); s.add_argument("--bundle", required=True); s.add_argument("--out", required=True); s.add_argument("--rate", type=int, default=120)
-    s = sub.add_parser("stage"); s.add_argument("--game", required=True); s.add_argument("--bundles", required=True); s.add_argument("--scene", required=True); s.add_argument("--out", required=True); s.add_argument("--target", default="pjsk")
+    s = sub.add_parser("stage"); s.add_argument("--game", required=True); s.add_argument("--bundles", required=True); s.add_argument("--scene", required=True); s.add_argument("--out", required=True); s.add_argument("--target", default="pjsk"); s.add_argument("--layout-bundle", help="Static Actor_00 layout defining the performance origin")
     s = sub.add_parser("inspect-stage"); s.add_argument("--game", required=True); s.add_argument("--bundles", required=True); s.add_argument("--scene", required=True)
     s = sub.add_parser("pjsk-twist"); s.add_argument("--skeleton", required=True); s.add_argument("bundles", nargs="+")
     s = sub.add_parser("pjsk-stage-materials"); s.add_argument("bundles", nargs="+")
@@ -34,7 +34,7 @@ def main():
         from haruki_convert.sources import gakumas_stage
         if a.game != "gakumas":
             raise SystemExit("stage sources: gakumas")
-        gakumas_stage.export(a.bundles, a.scene, a.out, a.target)
+        gakumas_stage.export(a.bundles, a.scene, a.out, a.target, a.layout_bundle)
     elif a.cmd == "inspect-stage":
         from haruki_convert import inspect_stage; inspect_stage.run(a.game, a.bundles, a.scene)
     elif a.cmd == "pjsk-twist":
