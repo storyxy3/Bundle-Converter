@@ -1,7 +1,7 @@
 #!/bin/bash
 # Haruki converter on JP01 (tooling). Run from anywhere on the local machine:
 #   jp01.sh export                        skeletons (source + target) and the source motion's Humanoid curves
-#   jp01.sh stage                         the source stage scene as haruki-external-stage/0
+#   jp01.sh stage                         the source stage scene as haruki-external-stage/1
 #   jp01.sh bake [frames] [render secs]   Humanoid curves -> target bone curves (unity/HumanoidBake), report, stick renders
 #   jp01.sh ground [motion]               the baked motion on the original PJSK model on a flat ground + seek pre-roll check
 #                                         (PlayMode test ExternalMotionGround of unity/Haruki3DMV)

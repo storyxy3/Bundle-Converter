@@ -1,6 +1,6 @@
 """Gakumas stage scene -> haruki-external-stage/0 with the target game's stage materials (profiles/<target>.json "stage").
 
-Output (out dir): stage.json (meshes, textures, materials as target shaders + properties, renderers with world TRS and
+Format haruki-external-stage/1 (arrays only, no nulls: Unity's JsonUtility reads it). Output (out dir): stage.json (meshes, textures, materials as target shaders + properties, renderers with world TRS and
 lightmap UV scale/offset), geometry.bin (per mesh: positions, normals, uv0, uv1 float32, then submesh indices uint32),
 textures/*.png (albedo RGBA8 x _BaseColor; the scene lightmap RGB8).
 
@@ -19,7 +19,7 @@ from UnityPy.helpers.MeshHelper import MeshHandler
 from .. import profiles
 from ..unity_assets import Assets, Transforms, decompose
 
-FORMAT = "haruki-external-stage/0"
+FORMAT = "haruki-external-stage/1"  # /1: JsonUtility-friendly (arrays, no null), consumed by the player
 
 
 def export(bundles_dir, scene, out, target="pjsk"):
@@ -147,11 +147,11 @@ def export(bundles_dir, scene, out, target="pjsk"):
         cutout = floats.get("_AlphaClip", 0) >= 0.5 or "_ALPHATEST_ON" in kws
         shader = tgt["shaders"]["transparent" if transparent else "cutout" if cutout else "opaque"]
         entry = {"name": mt["m_Name"], "sourceShader": a.shader_name(mo) or "<missing>", "shader": shader,
-                 "textures": {tgt["mainTexture"]: albedo}, "lightmap": "scene" if lightmapped else "neutral",
-                 "floats": {"_Cutoff": floats.get("_Cutoff", 0.5)} if cutout else {},
+                 "textures": [{"property": tgt["mainTexture"], "texture": albedo}] if albedo is not None else [],
+                 "color": tint if albedo is None else [1, 1, 1, 1],
+                 "lightmap": "scene" if lightmapped else "neutral",
+                 "floats": [{"property": "_Cutoff", "value": floats.get("_Cutoff", 0.5)}] if cutout else [],
                  "renderQueue": mt.get("m_CustomRenderQueue", -1), "sourceKeywords": sorted(kws)}
-        if albedo is None:
-            entry["color"] = tint
         mat_index[key] = len(materials)
         materials.append(entry)
         return mat_index[key]
@@ -185,7 +185,7 @@ def export(bundles_dir, scene, out, target="pjsk"):
             skipped["badmesh"] += 1
             continue
         renderers.append({"name": gt["m_Name"], "position": pos, "rotation": rot, "scale": scl, "mesh": mi,
-                          "materials": [material(a.deref(o, mp), lightmapped) if a.deref(o, mp) is not None else None for mp in t["m_Materials"]],
+                          "materials": [material(a.deref(o, mp), lightmapped) if a.deref(o, mp) is not None else -1 for mp in t["m_Materials"]],
                           "lightmap": scene_lightmaps[lmi] if lightmapped else neutral_lightmap(),
                           "lightmapScaleOffset": [so["x"], so["y"], so["z"], so["w"]] if lightmapped else [1, 1, 0, 0],
                           "layer": gt.get("m_Layer", 0)})

@@ -18,7 +18,7 @@ into Haruki formats the PJSK player loads. Tooling, not game code: the player ne
 | `haruki-skeleton/0` | `convert.py skeleton` | transform hierarchy (rest pose) + Humanoid map + profile description / conventions |
 | `haruki-humanoid-curves/0` | `convert.py humanoid-curves` | RootT/RootQ, IK goals, 95 muscles, sampled at a fixed rate (.json + .f32) |
 | `haruki-pjsk-bone-curves/1` | `unity/HumanoidBake` | target bone local rotations + travel carrier + hip positions per frame (.json + .f32) |
-| `haruki-external-stage/0` | `convert.py stage` | meshes, textures, target stage materials, renderers (stage.json + geometry.bin + textures/) |
+| `haruki-external-stage/1` | `convert.py stage` | meshes, textures, target stage materials, renderers (stage.json + geometry.bin + textures/) |
 
 - **Bakes that need Unity's own maths** (Humanoid muscles -> bones) run in the small Unity project
   `unity/HumanoidBake` (batch mode, `-executeMethod HumanoidBake.Run`). It builds the source and target Avatars from
