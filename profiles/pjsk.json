@@ -1,0 +1,270 @@
+{
+ "game": "pjsk",
+ "unityVersion": "2022.3.62f2",
+ "skeleton": {
+  "root": "body",
+  "rig": "Generic",
+  "humanBones": [
+   [
+    "Hip",
+    "Hips"
+   ],
+   [
+    "Waist",
+    "Spine"
+   ],
+   [
+    "Spine",
+    "Chest"
+   ],
+   [
+    "Chest",
+    "UpperChest"
+   ],
+   [
+    "Neck",
+    "Neck"
+   ],
+   [
+    "Head",
+    "Head"
+   ],
+   [
+    "Left_Shoulder",
+    "LeftShoulder"
+   ],
+   [
+    "Left_Arm",
+    "LeftUpperArm"
+   ],
+   [
+    "Left_Elbow",
+    "LeftLowerArm"
+   ],
+   [
+    "Left_Wrist",
+    "LeftHand"
+   ],
+   [
+    "Left_Thigh",
+    "LeftUpperLeg"
+   ],
+   [
+    "Left_Knee",
+    "LeftLowerLeg"
+   ],
+   [
+    "Left_Ankle",
+    "LeftFoot"
+   ],
+   [
+    "Left_Toe",
+    "LeftToes"
+   ],
+   [
+    "Left_Thumb_01",
+    "Left Thumb Proximal"
+   ],
+   [
+    "Left_Thumb_02",
+    "Left Thumb Intermediate"
+   ],
+   [
+    "Left_Thumb_03",
+    "Left Thumb Distal"
+   ],
+   [
+    "Left_Index_01",
+    "Left Index Proximal"
+   ],
+   [
+    "Left_Index_02",
+    "Left Index Intermediate"
+   ],
+   [
+    "Left_Index_03",
+    "Left Index Distal"
+   ],
+   [
+    "Left_Middle_01",
+    "Left Middle Proximal"
+   ],
+   [
+    "Left_Middle_02",
+    "Left Middle Intermediate"
+   ],
+   [
+    "Left_Middle_03",
+    "Left Middle Distal"
+   ],
+   [
+    "Left_Ring_01",
+    "Left Ring Proximal"
+   ],
+   [
+    "Left_Ring_02",
+    "Left Ring Intermediate"
+   ],
+   [
+    "Left_Ring_03",
+    "Left Ring Distal"
+   ],
+   [
+    "Left_Pinky_01",
+    "Left Little Proximal"
+   ],
+   [
+    "Left_Pinky_02",
+    "Left Little Intermediate"
+   ],
+   [
+    "Left_Pinky_03",
+    "Left Little Distal"
+   ],
+   [
+    "Right_Shoulder",
+    "RightShoulder"
+   ],
+   [
+    "Right_Arm",
+    "RightUpperArm"
+   ],
+   [
+    "Right_Elbow",
+    "RightLowerArm"
+   ],
+   [
+    "Right_Wrist",
+    "RightHand"
+   ],
+   [
+    "Right_Thigh",
+    "RightUpperLeg"
+   ],
+   [
+    "Right_Knee",
+    "RightLowerLeg"
+   ],
+   [
+    "Right_Ankle",
+    "RightFoot"
+   ],
+   [
+    "Right_Toe",
+    "RightToes"
+   ],
+   [
+    "Right_Thumb_01",
+    "Right Thumb Proximal"
+   ],
+   [
+    "Right_Thumb_02",
+    "Right Thumb Intermediate"
+   ],
+   [
+    "Right_Thumb_03",
+    "Right Thumb Distal"
+   ],
+   [
+    "Right_Index_01",
+    "Right Index Proximal"
+   ],
+   [
+    "Right_Index_02",
+    "Right Index Intermediate"
+   ],
+   [
+    "Right_Index_03",
+    "Right Index Distal"
+   ],
+   [
+    "Right_Middle_01",
+    "Right Middle Proximal"
+   ],
+   [
+    "Right_Middle_02",
+    "Right Middle Intermediate"
+   ],
+   [
+    "Right_Middle_03",
+    "Right Middle Distal"
+   ],
+   [
+    "Right_Ring_01",
+    "Right Ring Proximal"
+   ],
+   [
+    "Right_Ring_02",
+    "Right Ring Intermediate"
+   ],
+   [
+    "Right_Ring_03",
+    "Right Ring Distal"
+   ],
+   [
+    "Right_Pinky_01",
+    "Right Little Proximal"
+   ],
+   [
+    "Right_Pinky_02",
+    "Right Little Intermediate"
+   ],
+   [
+    "Right_Pinky_03",
+    "Right Little Distal"
+   ]
+  ],
+  "note": "One normalized skeleton for every figure (ladies_ss/s/m/l, mens, boys); Position (= CharacterModel.PositionNote) is scaled by the character height."
+ },
+ "conventions": {
+  "source": "27 original MV motions (MV 0001/0116/0253/0409), haruki_convert/sources/pjsk_twist.py",
+  "twistAxis": [
+   1,
+   0,
+   0
+  ],
+  "moveTwist": [
+   {
+    "from": "{S}_Elbow",
+    "to": "{S}_Wrist",
+    "note": "the elbow never twists in the originals"
+   }
+  ],
+  "rollBones": [
+   {
+    "bone": "{S}_ForeArmRoll",
+    "twistOf": "{S}_Wrist",
+    "ratio": 0.5,
+    "note": "fit residual 1.1-1.8 deg"
+   },
+   {
+    "bone": "{S}_ArmRoll",
+    "twistOf": "{S}_Arm",
+    "ratio": -0.47,
+    "note": "fit residual ~10 deg (hand keyed)"
+   }
+  ],
+  "travel": {
+   "carrier": "Position",
+   "hip": "Hip",
+   "units": "normalized: the player multiplies by the character height"
+  }
+ },
+ "stage": {
+  "shaders": {
+   "opaque": "Sekai/Live/Stage/LightMap",
+   "cutout": "Sekai/Live/Stage/LightMap-Cutout",
+   "transparent": "Sekai/Live/Stage/LightMap-Transparent"
+  },
+  "mainTexture": "_MainTex",
+  "lightmapTexture": "_LightMapTex",
+  "lightmapUv": 1,
+  "vertexColor": [
+   0.5,
+   0.5,
+   0.5,
+   1.0
+  ],
+  "note": "c = MainTex x vertex colour x LightMap(uv1), blended with the MV ambient around c = 0.25 (ambient 0.5: result 2c); a missing COLOR attribute renders black"
+ }
+}

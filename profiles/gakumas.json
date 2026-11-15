@@ -1,0 +1,252 @@
+{
+ "game": "gakumas",
+ "unityVersion": "6000.0.77f1",
+ "skeleton": {
+  "rig": "Humanoid",
+  "humanBones": [
+   [
+    "Hips",
+    "Hips"
+   ],
+   [
+    "Spine",
+    "Spine"
+   ],
+   [
+    "Spine1",
+    "Chest"
+   ],
+   [
+    "Spine2",
+    "UpperChest"
+   ],
+   [
+    "LeftShoulder",
+    "LeftShoulder"
+   ],
+   [
+    "LeftArm",
+    "LeftUpperArm"
+   ],
+   [
+    "LeftForeArm",
+    "LeftLowerArm"
+   ],
+   [
+    "LeftHand",
+    "LeftHand"
+   ],
+   [
+    "RightShoulder",
+    "RightShoulder"
+   ],
+   [
+    "RightArm",
+    "RightUpperArm"
+   ],
+   [
+    "RightForeArm",
+    "RightLowerArm"
+   ],
+   [
+    "RightHand",
+    "RightHand"
+   ],
+   [
+    "LeftUpLeg",
+    "LeftUpperLeg"
+   ],
+   [
+    "LeftLeg",
+    "LeftLowerLeg"
+   ],
+   [
+    "LeftFoot",
+    "LeftFoot"
+   ],
+   [
+    "LeftToeBase",
+    "LeftToes"
+   ],
+   [
+    "RightUpLeg",
+    "RightUpperLeg"
+   ],
+   [
+    "RightLeg",
+    "RightLowerLeg"
+   ],
+   [
+    "RightFoot",
+    "RightFoot"
+   ],
+   [
+    "RightToeBase",
+    "RightToes"
+   ],
+   [
+    "Neck",
+    "Neck"
+   ],
+   [
+    "Head",
+    "Head"
+   ],
+   [
+    "LeftEye",
+    "LeftEye"
+   ],
+   [
+    "RightEye",
+    "RightEye"
+   ],
+   [
+    "Mouth",
+    "Jaw"
+   ],
+   [
+    "LeftHandThumb1",
+    "Left Thumb Proximal"
+   ],
+   [
+    "LeftHandThumb2",
+    "Left Thumb Intermediate"
+   ],
+   [
+    "LeftHandThumb3",
+    "Left Thumb Distal"
+   ],
+   [
+    "LeftHandIndex1",
+    "Left Index Proximal"
+   ],
+   [
+    "LeftHandIndex2",
+    "Left Index Intermediate"
+   ],
+   [
+    "LeftHandIndex3",
+    "Left Index Distal"
+   ],
+   [
+    "LeftHandMiddle1",
+    "Left Middle Proximal"
+   ],
+   [
+    "LeftHandMiddle2",
+    "Left Middle Intermediate"
+   ],
+   [
+    "LeftHandMiddle3",
+    "Left Middle Distal"
+   ],
+   [
+    "LeftHandRing1",
+    "Left Ring Proximal"
+   ],
+   [
+    "LeftHandRing2",
+    "Left Ring Intermediate"
+   ],
+   [
+    "LeftHandRing3",
+    "Left Ring Distal"
+   ],
+   [
+    "LeftHandPinky1",
+    "Left Little Proximal"
+   ],
+   [
+    "LeftHandPinky2",
+    "Left Little Intermediate"
+   ],
+   [
+    "LeftHandPinky3",
+    "Left Little Distal"
+   ],
+   [
+    "RightHandThumb1",
+    "Right Thumb Proximal"
+   ],
+   [
+    "RightHandThumb2",
+    "Right Thumb Intermediate"
+   ],
+   [
+    "RightHandThumb3",
+    "Right Thumb Distal"
+   ],
+   [
+    "RightHandIndex1",
+    "Right Index Proximal"
+   ],
+   [
+    "RightHandIndex2",
+    "Right Index Intermediate"
+   ],
+   [
+    "RightHandIndex3",
+    "Right Index Distal"
+   ],
+   [
+    "RightHandMiddle1",
+    "Right Middle Proximal"
+   ],
+   [
+    "RightHandMiddle2",
+    "Right Middle Intermediate"
+   ],
+   [
+    "RightHandMiddle3",
+    "Right Middle Distal"
+   ],
+   [
+    "RightHandRing1",
+    "Right Ring Proximal"
+   ],
+   [
+    "RightHandRing2",
+    "Right Ring Intermediate"
+   ],
+   [
+    "RightHandRing3",
+    "Right Ring Distal"
+   ],
+   [
+    "RightHandPinky1",
+    "Right Little Proximal"
+   ],
+   [
+    "RightHandPinky2",
+    "Right Little Intermediate"
+   ],
+   [
+    "RightHandPinky3",
+    "Right Little Distal"
+   ]
+  ],
+  "humanBonesSource": "VLActorDefine..cctor (captured Dictionary.Add arguments), /work/gakumas/work/playback/human_bone_map.json",
+  "humanDescription": {
+   "upperArmTwist": 1.0,
+   "lowerArmTwist": 0.0,
+   "upperLegTwist": 1.0,
+   "lowerLegTwist": 0.0,
+   "armStretch": 0.05,
+   "legStretch": 0.05,
+   "feetSpacing": 0.0,
+   "hasTranslationDoF": false
+  },
+  "humanDescriptionSource": "CampusActorController.GetHumanDescription (PLAYBACK.md section 2)"
+ },
+ "motion": {
+  "bodyClipSuffix": "_b",
+  "faceClipSuffix": "_f",
+  "stageTravel": "Root_Body/Move"
+ },
+ "stage": {
+  "lightmapIndexNone": [
+   65534,
+   65535
+  ]
+ }
+}
