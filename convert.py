@@ -20,7 +20,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("skeleton"); s.add_argument("--game", required=True); s.add_argument("--bundle", required=True); s.add_argument("--out", required=True); s.add_argument("--root")
-    s = sub.add_parser("humanoid-curves"); s.add_argument("--game", required=True); s.add_argument("--bundle", required=True); s.add_argument("--out", required=True); s.add_argument("--rate", type=int, default=120); s.add_argument("--layout-bundle"); s.add_argument("--include-props", action="store_true")
+    s = sub.add_parser("humanoid-curves"); s.add_argument("--game", required=True); s.add_argument("--bundle", required=True); s.add_argument("--out", required=True); s.add_argument("--rate", type=int, default=120); s.add_argument("--layout-bundle"); s.add_argument("--include-props", action="store_true"); s.add_argument("--bake-layout", action="store_true", help="Opt in to baking source stage placement into the motion (requires --layout-bundle)")
     s = sub.add_parser("stage"); s.add_argument("--game", required=True); s.add_argument("--bundles", required=True); s.add_argument("--scene", required=True); s.add_argument("--out", required=True); s.add_argument("--target", default="pjsk"); s.add_argument("--layout-bundle", help="Static Actor_00 layout defining the performance origin")
     s = sub.add_parser("inspect-stage"); s.add_argument("--game", required=True); s.add_argument("--bundles", required=True); s.add_argument("--scene", required=True)
     s = sub.add_parser("pjsk-twist"); s.add_argument("--skeleton", required=True); s.add_argument("bundles", nargs="+")
@@ -54,7 +54,7 @@ def main():
     elif a.cmd == "skeleton":
         from haruki_convert import skeleton; skeleton.export(a.game, a.bundle, a.out, a.root)
     elif a.cmd == "humanoid-curves":
-        from haruki_convert import humanoid_curves; humanoid_curves.export(a.game, a.bundle, a.out, a.rate, a.layout_bundle, a.include_props)
+        from haruki_convert import humanoid_curves; humanoid_curves.export(a.game, a.bundle, a.out, a.rate, a.layout_bundle, a.include_props, a.bake_layout)
     elif a.cmd == "stage":
         from haruki_convert.sources import gakumas_stage
         if a.game != "gakumas":

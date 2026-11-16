@@ -35,7 +35,7 @@ public static partial class HumanoidBake
     [Serializable] private class TravelJson { public string carrier; public string hip; }
     [Serializable] private class ConventionsJson { public float[] twistAxis; public MoveTwistJson[] moveTwist; public RollJson[] rollBones; public TravelJson travel; }
     [Serializable] private class SkeletonJson { public string game; public string root; public BoneJson[] bones; public HumanJson[] human; public DescJson description; public ConventionsJson conventions; }
-    [Serializable] private class MotionJson { public string clip; public int rate; public int frames; public float start, stop; public string[] channels; public bool[] present; public ClipFlags settings; public string layoutFile, semanticsFile; public bool applyPlayableIK, applyFootIK, isAdditive, hasMask; }
+    [Serializable] private class MotionJson { public string clip; public int rate; public int frames; public float start, stop; public string[] channels; public bool[] present; public ClipFlags settings; public string layoutFile, semanticsFile; public bool bakeLayout; public bool applyPlayableIK, applyFootIK, isAdditive, hasMask; }
 
     private sealed class Rig
     {
@@ -119,10 +119,12 @@ public static partial class HumanoidBake
         var outBones = pjskJson.human.Select(h => dst.byName[h.bone]).Concat(conv.RollBones).Concat(assists?.Bones??new Transform[0]).ToArray();
         var height=float.Parse(Env("HB_HEIGHT","1.58"),Inv);
         if(height<=0)throw new Exception("HB_HEIGHT must be positive");
-        var layoutMode=Env("HB_LAYOUT","separate");
+        var layoutMode=Env("HB_LAYOUT",header.bakeLayout?"bake":"separate");
         if(layoutMode!="separate"&&layoutMode!="bake")throw new Exception("HB_LAYOUT must be separate or bake");
-        var layout=layoutMode=="bake"&&!string.IsNullOrEmpty(header.layoutFile)?File.ReadAllBytes(Path.Combine(dataDir,header.layoutFile)):null;
-        if(layout!=null&&layout.Length!=frames*12*4)throw new Exception("layout payload size mismatch");
+        var sourceLayout=!string.IsNullOrEmpty(header.layoutFile)?File.ReadAllBytes(Path.Combine(dataDir,header.layoutFile)):null;
+        if(sourceLayout!=null&&sourceLayout.Length!=frames*12*4)throw new Exception("layout payload size mismatch");
+        if(layoutMode=="bake"&&sourceLayout==null)throw new Exception("layout bake requires a layout payload");
+        var layout=layoutMode=="bake"?sourceLayout:null;
         int moveChannel=C("Move.x");
         var hip = conv.Hip;
         var position = conv.Carrier;
@@ -218,6 +220,16 @@ public static partial class HumanoidBake
         hdr.Append("  \"positionUnits\": \"normalized skeleton units: multiply Position by the character height (Position is the PositionNote, its own localPosition is not scaled); Hip is under the scaled Position and is used as is\",\n");
         hdr.Append($"  \"duration\": {Math.Max(0,Math.Min(header.stop-header.start,last/(double)header.rate)-first/(double)header.rate).ToString("R",Inv)}, \"semanticsFile\": \"{header.semanticsFile}\",\n");
         hdr.Append($"  \"characterHeight\": {height.ToString("R", Inv)}, \"layoutPolicy\": \"{layoutMode}\", \"loop\": {(header.settings!=null&&header.settings.LoopTime?"true":"false")},\n");
+        // Informational source placement at the first exported sample; never applied by the player.
+        if(sourceLayout!=null)
+        {
+            float L(int c)=>BitConverter.ToSingle(sourceLayout,(first*12+c)*4);
+            var layoutRootRotation=Quaternion.Euler(L(3),L(4),L(5));
+            var origin=new Vector3(L(0),L(1),L(2))+layoutRootRotation*new Vector3(L(6),L(7),L(8));
+            var rotation=layoutRootRotation*Quaternion.Euler(L(9),L(10),L(11));
+            string F(float v)=>v.ToString("R",Inv);
+            hdr.Append($"  \"sourceLayout\": {{\"originMeters\": [{F(origin.x)}, {F(origin.y)}, {F(origin.z)}], \"rotationXYZW\": [{F(rotation.x)}, {F(rotation.y)}, {F(rotation.z)}, {F(rotation.w)}], \"sampleSeconds\": {(header.start+first/(double)header.rate).ToString("R",Inv)}, \"normalizationHeightMeters\": {F(height)}, \"normalization\": \"meters / characterHeight\", \"applied\": {(layout!=null?"true":"false")} }},\n");
+        }
         hdr.Append("  \"extraPositionBones\": ["+string.Join(", ", (assists?.Bones??new Transform[0]).Select(b=>"\""+b.name+"\""))+"],\n");
         hdr.Append("  \"bones\": [" + string.Join(", ", outBones.Select(b => "\"" + b.name + "\"")) + "]\n}\n");
         File.WriteAllText(Path.Combine(outDir, motionName + ".pjsk.json"), hdr.ToString());

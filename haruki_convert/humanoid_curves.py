@@ -16,7 +16,8 @@ from .unity_clip import clips
 FORMAT = "haruki-humanoid-curves/1"
 
 
-def export(game, bundle, prefix, rate, layout_bundle=None, include_props=False):
+def export(game, bundle, prefix, rate, layout_bundle=None, include_props=False, bake_layout=False):
+    if bake_layout and not layout_bundle: raise ValueError("--bake-layout requires --layout-bundle")
     if rate <= 0: raise ValueError("rate must be positive")
     prof = profiles.load(game)
     suffix = prof.get("motion", {}).get("bodyClipSuffix", "")
@@ -54,7 +55,7 @@ def export(game, bundle, prefix, rate, layout_bundle=None, include_props=False):
         meta=metadata(a);base=meta.get("baseAnimation",{})
         with open(prefix + ".json", "w") as f:
             json.dump({"format": FORMAT, "game": game, "source": str(bundle), "clip": c.name, "rate": rate, "start": c.start,
-                       "stop": c.stop, "frames": n, "channels": names, "present": present, "settings": flags(c), "applyPlayableIK": bool(base.get("applyPlayableIK",False)), "applyFootIK": bool(base.get("applyFootIK",False)), "isAdditive": bool(meta.get("isAdditive",False)), "hasMask": bool(base.get("mask",{}).get("m_PathID",0)), "semanticsFile": prefix.rsplit("/", 1)[-1]+".semantics.json", "layoutFile": prefix.rsplit("/", 1)[-1]+".layout.f32" if layout_bundle else ""}, f, indent=1)
+                       "bakeLayout": bake_layout, "stop": c.stop, "frames": n, "channels": names, "present": present, "settings": flags(c), "applyPlayableIK": bool(base.get("applyPlayableIK",False)), "applyFootIK": bool(base.get("applyFootIK",False)), "isAdditive": bool(meta.get("isAdditive",False)), "hasMask": bool(base.get("mask",{}).get("m_PathID",0)), "semanticsFile": prefix.rsplit("/", 1)[-1]+".semantics.json", "layoutFile": prefix.rsplit("/", 1)[-1]+".layout.f32" if layout_bundle else ""}, f, indent=1)
         print(f"humanoid curves: {c.name} {n} frames @ {rate} Hz, {len(hum)}/137 Humanoid channels + {len(names)-137} auxiliary scalars")
         return
     raise SystemExit(f"no Humanoid clip ending in {suffix!r} in {bundle}")

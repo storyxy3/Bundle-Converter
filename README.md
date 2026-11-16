@@ -52,13 +52,19 @@ It runs only this converter's Unity project with **6000.0.77f1**. Do not use the
   PJSK Avatar with Gakumas HumanDescription. Side-branch roll bones are **not** summed
   into the chain: doing so would double the twist already present in Arm/Wrist.
 - `humanoid-curves` now emits `/1`: the 137 original channels, Move.xyz, then the ten
-  IK control scales.xyz. `--layout-bundle` preserves root and actor placement;
+  IK control scales.xyz. `--layout-bundle` preserves root and actor placement as metadata only by default;
+  `--bake-layout` explicitly opts into the legacy layout bake (requires `--layout-bundle`);
   `--include-props` retains prop associations and typed constraint curves.
 - `HumanoidBake.Run` reconstructs a native editor Humanoid clip, copies supported clip
   settings, evaluates authored Generic transforms and the documented IK job order,
   calls native `SolveIK`, then applies the late Hips XZ overwrite. It retargets the
   evaluated source pose, writes authoritative Move divided by `HB_HEIGHT` (default
-  1.58), and optionally bakes layout with `HB_LAYOUT=bake` (default `separate`).
+  1.58), and optionally bakes layout with `--bake-layout` on the input export (default: separate).
+  `HB_LAYOUT=bake|separate` overrides that header policy for existing workflows.
+  The output `sourceLayout` records first-exported-sample `originMeters`, rotation,
+  sample time, `normalizationHeightMeters`, the meters / characterHeight formula,
+  and whether layout was applied. Full animated layout stays in the sidecar.
+  Stage placement belongs to the stage; normal playback must not apply this metadata.
 - `pjsk-assists --skeleton ... --out fit.json BUNDLE...` measures quadratic fits from
   original motions, holding out the final bundle. `HB_ASSISTS=fit.json` enables these
   explicitly approximate helpers. Four additional translations require bone format
