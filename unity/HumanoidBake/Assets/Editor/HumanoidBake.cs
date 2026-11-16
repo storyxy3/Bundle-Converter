@@ -25,7 +25,7 @@ using System.Text;
 using UnityEditor;
 using UnityEngine;
 
-public static class HumanoidBake
+public static partial class HumanoidBake
 {
     [Serializable] private class BoneJson { public string name; public int parent; public float[] position; public float[] rotation; public float[] scale; }
     [Serializable] private class HumanJson { public string bone; public string humanName; }
@@ -35,7 +35,7 @@ public static class HumanoidBake
     [Serializable] private class TravelJson { public string carrier; public string hip; }
     [Serializable] private class ConventionsJson { public float[] twistAxis; public MoveTwistJson[] moveTwist; public RollJson[] rollBones; public TravelJson travel; }
     [Serializable] private class SkeletonJson { public string game; public string root; public BoneJson[] bones; public HumanJson[] human; public DescJson description; public ConventionsJson conventions; }
-    [Serializable] private class MotionJson { public string clip; public int rate; public int frames; public float start; public string[] channels; }
+    [Serializable] private class MotionJson { public string clip; public int rate; public int frames; public float start, stop; public string[] channels; public bool[] present; public ClipFlags settings; public string layoutFile, semanticsFile; public bool applyPlayableIK, applyFootIK, isAdditive, hasMask; }
 
     private sealed class Rig
     {
@@ -89,8 +89,8 @@ public static class HumanoidBake
         if (raw.Length != frames * ch * 4) throw new Exception($"muscle file size {raw.Length} != {frames}x{ch}x4");
         var limit = int.Parse(Env("HB_FRAMES", frames.ToString()), Inv);
         var range = Env("HB_RANGE", "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries).Select(x => float.Parse(x, Inv)).ToArray();
-        int first = range.Length == 2 ? Mathf.Clamp(Mathf.RoundToInt(range[0] * header.rate), 0, frames - 1) : 0;
-        int last = range.Length == 2 ? Mathf.Clamp(Mathf.RoundToInt(range[1] * header.rate), first, frames - 1) : frames - 1;
+        int first = range.Length == 2 ? Mathf.Clamp(Mathf.RoundToInt((range[0]-header.start) * header.rate), 0, frames - 1) : 0;
+        int last = range.Length == 2 ? Mathf.Clamp(Mathf.RoundToInt((range[1]-header.start) * header.rate), first, frames - 1) : frames - 1;
         last = Math.Min(last, first + limit - 1);
         var travelMode = Env("HB_TRAVEL", "keep");
         var travelScale = float.Parse(Env("HB_TRAVEL_SCALE", "1"), Inv);
@@ -112,8 +112,18 @@ public static class HumanoidBake
         Log($"motion {header.clip}: frames {first}..{last} of {frames} @ {header.rate} Hz, {ch} channels; muscles mapped by name: {HumanTrait.MuscleCount}; travel {travelMode} x{travelScale}");
 
         // Output: the PJSK bones the humanoid drives (human bones) + the roll bones, then Position and Hip positions.
+        using var native = header.channels.Length > 137 ? new NativeSource(src, header, raw, dataDir) : null;
         var conv = new TargetConventions(dst, pjskJson);
-        var outBones = pjskJson.human.Select(h => dst.byName[h.bone]).Concat(conv.RollBones).ToArray();
+        var fitPath=Env("HB_ASSISTS", "");
+        var assists=string.IsNullOrEmpty(fitPath)?null:new AssistFit(fitPath,dst,pjskJson);
+        var outBones = pjskJson.human.Select(h => dst.byName[h.bone]).Concat(conv.RollBones).Concat(assists?.Bones??new Transform[0]).ToArray();
+        var height=float.Parse(Env("HB_HEIGHT","1.58"),Inv);
+        if(height<=0)throw new Exception("HB_HEIGHT must be positive");
+        var layoutMode=Env("HB_LAYOUT","separate");
+        if(layoutMode!="separate"&&layoutMode!="bake")throw new Exception("HB_LAYOUT must be separate or bake");
+        var layout=layoutMode=="bake"&&!string.IsNullOrEmpty(header.layoutFile)?File.ReadAllBytes(Path.Combine(dataDir,header.layoutFile)):null;
+        if(layout!=null&&layout.Length!=frames*12*4)throw new Exception("layout payload size mismatch");
+        int moveChannel=C("Move.x");
         var hip = conv.Hip;
         var position = conv.Carrier;
         var bakePath = Path.Combine(outDir, motionName + ".pjsk.f32");
@@ -138,9 +148,28 @@ public static class HumanoidBake
                 var q = new Quaternion(V(f, rootQ), V(f, rootQ + 1), V(f, rootQ + 2), V(f, rootQ + 3));
                 pose.bodyRotation = Normalize(q);
                 for (int m = 0; m < pose.muscles.Length; m++) pose.muscles[m] = V(f, muscleIndex[m]);
-                src.handler.SetHumanPose(ref pose);
+                if(native != null) native.Sample(f/(float)header.rate, ref pose);
+                else src.handler.SetHumanPose(ref pose);
                 dst.handler.SetHumanPose(ref pose);
                 conv.Apply(travelMode == "inplace" ? 0f : travelScale);
+                if(moveChannel>=0)
+                {
+                    var move=native!=null?src.byName["Move"].localPosition:new Vector3(V(f,moveChannel),V(f,moveChannel+1),V(f,moveChannel+2));
+                    position.localPosition=travelMode=="inplace"?Vector3.zero:move/height*travelScale;
+                }
+                var layoutRotation=Quaternion.identity;var layoutTranslation=Vector3.zero;
+                if(layout!=null)
+                {
+                    float L(int c)=>BitConverter.ToSingle(layout,(f*12+c)*4);
+                    var layoutRootQ=Quaternion.Euler(L(3),L(4),L(5));var actorQ=Quaternion.Euler(L(9),L(10),L(11));
+                    var rotation=layoutRootQ*actorQ;var translation=new Vector3(L(0),L(1),L(2))+layoutRootQ*new Vector3(L(6),L(7),L(8));
+                    layoutRotation=rotation;layoutTranslation=translation/height;
+                    var world=rotation*hip.position+translation/height;var orientation=rotation*hip.rotation;
+                    var local=hip.localPosition;position.localPosition=new Vector3(world.x-local.x,0,world.z-local.z);
+                    hip.localPosition=new Vector3(local.x,world.y,local.z);hip.rotation=orientation;
+                }
+                conv.PosMin=Vector3.Min(conv.PosMin,position.localPosition);conv.PosMax=Vector3.Max(conv.PosMax,position.localPosition);
+                assists?.Apply();
 
                 foreach (var b in outBones)
                 {
@@ -148,15 +177,19 @@ public static class HumanoidBake
                 }
                 var pp = position.localPosition; w.Write(pp.x); w.Write(pp.y); w.Write(pp.z);
                 var hp = hip.localPosition; w.Write(hp.x); w.Write(hp.y); w.Write(hp.z);
+                if(assists!=null)foreach(var b in assists.Bones){var p=b.localPosition;w.Write(p.x);w.Write(p.y);w.Write(p.z);}
 
                 foreach (var s in segments)
                 {
-                    var a = (s.srcChild.position - s.srcBone.position).normalized;
+                    var a = layoutRotation*(s.srcChild.position - s.srcBone.position).normalized;
                     var b = (s.dstChild.position - s.dstBone.position).normalized;
                     stats[s.name].Add(Vector3.Angle(a, b));
                 }
                 // Foot height above the lowest point of the rig, relative to hip height (ground contact check).
-                footStats.Add(FootHeight(dst) - FootHeight(src));
+                var inverseLayout=Quaternion.Inverse(layoutRotation);
+                float targetAnkle=Mathf.Min((inverseLayout*(dst.byHuman["LeftFoot"].position-layoutTranslation)).y,
+                    (inverseLayout*(dst.byHuman["RightFoot"].position-layoutTranslation)).y)/dst.restHipHeight;
+                footStats.Add(targetAnkle - FootHeight(src));
 
                 if (f == first)
                 {
@@ -170,13 +203,22 @@ public static class HumanoidBake
             }
         }
         Log(firstFrameReport.ToString().TrimEnd());
+        if(native!=null)File.WriteAllText(Path.Combine(outDir,motionName+".native-report.txt"),native.Report);
 
+        foreach(var suffix in new[]{".semantics.json",".semantics.f32",".layout.f32"})
+        {
+            var path=Path.Combine(dataDir,motionName+suffix);
+            if(File.Exists(path))File.Copy(path,Path.Combine(outDir,motionName+suffix),true);
+        }
         // Header for the baked motion.
         var hdr = new StringBuilder("{\n");
-        hdr.Append($"  \"format\": \"haruki-pjsk-bone-curves/1\",\n  \"source\": \"{header.clip}\",\n  \"rate\": {header.rate},\n  \"frames\": {last - first + 1},\n");
-        hdr.Append($"  \"sourceStartSeconds\": {(first / (double)header.rate).ToString("R", Inv)},\n  \"travel\": \"{travelMode}\",\n  \"travelScale\": {travelScale.ToString("R", Inv)},\n");
-        hdr.Append("  \"layout\": \"per frame: for each bone localRotation xyzw (float32), then Position localPosition xyz, then Hip localPosition xyz\",\n");
+        hdr.Append($"  \"format\": \"haruki-pjsk-bone-curves/{(assists==null?1:2)}\",\n  \"source\": \"{header.clip}\",\n  \"rate\": {header.rate},\n  \"frames\": {last - first + 1},\n");
+        hdr.Append($"  \"sourceStartSeconds\": {(header.start + first / (double)header.rate).ToString("R", Inv)},\n  \"travel\": \"{travelMode}\",\n  \"travelScale\": {travelScale.ToString("R", Inv)},\n");
+        hdr.Append("  \"layout\": \"per frame: for each bone localRotation xyzw (float32), then Position localPosition xyz, then Hip localPosition xyz, then extraPositionBones localPosition xyz (v2 only)\",\n");
         hdr.Append("  \"positionUnits\": \"normalized skeleton units: multiply Position by the character height (Position is the PositionNote, its own localPosition is not scaled); Hip is under the scaled Position and is used as is\",\n");
+        hdr.Append($"  \"duration\": {Math.Max(0,Math.Min(header.stop-header.start,last/(double)header.rate)-first/(double)header.rate).ToString("R",Inv)}, \"semanticsFile\": \"{header.semanticsFile}\",\n");
+        hdr.Append($"  \"characterHeight\": {height.ToString("R", Inv)}, \"layoutPolicy\": \"{layoutMode}\", \"loop\": {(header.settings!=null&&header.settings.LoopTime?"true":"false")},\n");
+        hdr.Append("  \"extraPositionBones\": ["+string.Join(", ", (assists?.Bones??new Transform[0]).Select(b=>"\""+b.name+"\""))+"],\n");
         hdr.Append("  \"bones\": [" + string.Join(", ", outBones.Select(b => "\"" + b.name + "\"")) + "]\n}\n");
         File.WriteAllText(Path.Combine(outDir, motionName + ".pjsk.json"), hdr.ToString());
 
@@ -198,7 +240,7 @@ public static class HumanoidBake
             rep.AppendLine($"  {s.name,-46} {restDiff[s.name],7:F2} {v.Average(),7:F2} {P(0.95),7:F2} {v[v.Count - 1],7:F2} {P(0.95) - P(0.05),7:F2}");
         }
         footStats.Sort();
-        rep.AppendLine($"lower ankle height difference (pjsk - gakumas, fraction of rest hip height): rest {restFoot:F4}  motion p5 {footStats[(int)(footStats.Count * 0.05)]:F4} median {footStats[footStats.Count / 2]:F4} p95 {footStats[(int)(footStats.Count * 0.95)]:F4}");
+        rep.AppendLine($"lower ankle height difference (pjsk - gakumas, layout undone, fraction of rest hip height): rest {restFoot:F4}  motion p5 {footStats[(int)(footStats.Count * 0.05)]:F4} median {footStats[footStats.Count / 2]:F4} p95 {footStats[(int)(footStats.Count * 0.95)]:F4}");
         File.WriteAllText(Path.Combine(outDir, motionName + ".report.txt"), rep.ToString());
         Log("\n" + rep);
         renderer?.Dispose();
@@ -286,7 +328,7 @@ public static class HumanoidBake
             Carrier.localPosition = travel;
             var hipLocalY = Hip.parent.InverseTransformPoint(Hip.position).y;
             Hip.localPosition = new Vector3(_hipRest.x, hipLocalY, _hipRest.z);
-            PosMin = Vector3.Min(PosMin, travel); PosMax = Vector3.Max(PosMax, travel);
+
         }
     }
 
