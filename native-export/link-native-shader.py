@@ -1,5 +1,6 @@
 """Offline native material linkage. Run after NativeActorExport, before staging."""
 import json
+import os
 from pathlib import Path
 import UnityPy
 from UnityPy.files.SerializedFile import FileIdentifier
@@ -8,9 +9,9 @@ UnityPy.config.FALLBACK_UNITY_VERSION = '6000.0.77f1'
 content = Path('/work/gakumas/live-urp-ext/Build/Content-Linux/ttmr001')
 shader_bundle = UnityPy.load(str(content / 'actor-shader.unity3d'))
 shader = next(o for o in shader_bundle.objects if o.type.name == 'Shader' and o.read().m_ParsedForm.m_Name == 'Campus/Actor/Default')
-metadata = json.loads(Path('/work/gakumas/live-urp-ext/.recon/task-O/actor/actor.json').read_text())
+metadata = json.loads(Path(os.environ.get('U_LINK_METADATA','/work/gakumas/live-urp-ext/.recon/task-O/actor/actor.json')).read_text())
 materials = {m['name']: m for m in metadata['materials']}
-output = Path('/work/motion-bake/task-S/actor-out')
+output = Path(os.environ.get('U_LINK_OUTPUT','/work/motion-bake/task-U/actor-out'))
 for path in output.glob('mdl*.unity3d'):
     env = UnityPy.load(str(path))
     changed = 0
@@ -58,61 +59,3 @@ for path in output.glob('mdl*.unity3d'):
     path.write_bytes(env.file.save(packer='lz4'))
     print(path.name, 'native materials', changed)
 
-# Native timeline assets reference this definition by CAB identity and PathID.
-# Preserve the original public object identity while replacing its native payload.
-motion_name = 'mot_live_chr_ttmr_ttmr-001_00_in.unity3d'
-original_motion = UnityPy.load(str(content / motion_name))
-template_define = next(o for o in original_motion.objects if o.type.name == 'MonoBehaviour' and 'baseAnimation' in o.read_typetree())
-motion_path = output.parent / 'motion-out' / motion_name
-motion = UnityPy.load(str(motion_path))
-define = next(o for o in motion.objects if o.type.name == 'MonoBehaviour' and 'baseAnimation' in o.read_typetree())
-old_id, new_id = define.path_id, template_define.path_id
-directory = define.assets_file
-
-def remap(value):
-    if isinstance(value, dict):
-        if value.get('m_FileID') == 0 and value.get('m_PathID') == old_id:
-            value['m_PathID'] = new_id
-        for child in value.values():
-            remap(child)
-    elif isinstance(value, (list, tuple)):
-        for child in value:
-            remap(child)
-
-for obj in list(directory.objects.values()):
-    data = obj.read_typetree()
-    remap(data)
-    if obj.type.name == 'AssetBundle':
-        native_container = next(o for o in original_motion.objects if o.type.name == 'AssetBundle').read_typetree()['m_Container']
-        native_key = next(name for name, entry in native_container if entry['asset']['m_PathID'] == new_id)
-        data['m_Container'] = [(native_key, entry) for _, entry in data['m_Container']]
-    if obj == define:
-        data['m_Name'] = template_define.read_typetree()['m_Name']
-    obj.save_typetree(data)
-directory.objects.pop(old_id)
-define.path_id = new_id
-directory.objects[new_id] = define
-if len(motion.file.files) != 1:
-    raise ValueError('Unexpected external motion stream: identity relocation required')
-directory.name = template_define.assets_file.name
-motion.file.files = {directory.name: directory}
-motion_path.write_bytes(motion.file.save(packer='lz4'))
-print('Native timeline motion identity', directory.name, new_id)
-
-# Neutral face contract: retain native facial-system code, provide no blink channels.
-# PJSK expression conversion is outside this task; empty native arrays are valid data.
-resources = UnityPy.load(str(content / 'trueend-resources.unity3d'))
-neutralized = 0
-for obj in resources.objects:
-    if obj.type.name != 'MonoBehaviour':
-        continue
-    data = obj.read_typetree()
-    if data.get('m_Name') == 'VLActorEyeBlinkData':
-        data['blinkDatas'] = []
-        data['limitDatas'] = []
-        obj.save_typetree(data)
-        neutralized += 1
-if neutralized != 1:
-    raise ValueError('Expected one native eye blink definition')
-(output / 'trueend-resources.unity3d').write_bytes(resources.file.save(packer='lz4'))
-print('Native neutral blink definitions', neutralized)

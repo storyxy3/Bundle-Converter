@@ -11,8 +11,8 @@ using Object = UnityEngine.Object;
 // Offline conversion only: emitted prefabs contain native components exclusively.
 public static class NativeActorExport
 {
-    const string Out = "/work/motion-bake/task-S/actor-out";
-    const string Assets = "Assets/NativeActor";
+    static string Out => Environment.GetEnvironmentVariable("U_ACTOR_OUT") ?? "/work/motion-bake/task-U/actor-out";
+    static string Assets => Environment.GetEnvironmentVariable("U_ACTOR_ASSETS") ?? "Assets/NativeActor";
     public static void Run()
     {
         try { Export(); EditorApplication.Exit(0); }
@@ -27,7 +27,8 @@ public static class NativeActorExport
         var actor = Object.Instantiate(bundle.LoadAllAssets<GameObject>().Single());
         actor.name = "mdl_chr_ttmr-cstm-0003_body";
         // O's fitting process leaves a sampled pose on its output. Restore L's authored rest skeleton.
-        var restBundle=AssetBundle.LoadFromFile("/work/motion-bake/task-L/actor-export/output/ichika.actor.bundle");
+        var restPath=Environment.GetEnvironmentVariable("U_REST_BUNDLE");
+        var restBundle=restPath!=null && restPath==Environment.GetEnvironmentVariable("S_SWING_BUNDLE")?bundle:AssetBundle.LoadFromFile(restPath ?? "/work/motion-bake/task-L/actor-export/output/ichika.actor.bundle");
         var restActor=restBundle.LoadAllAssets<GameObject>().Single();
         var rest=restActor.GetComponentsInChildren<Transform>(true).ToDictionary(t=>AnimationUtility.CalculateTransformPath(t,restActor.transform));
         foreach(var t in actor.GetComponentsInChildren<Transform>(true))
@@ -37,7 +38,7 @@ public static class NativeActorExport
         foreach(var c in actor.GetComponentsInChildren<Component>(true))if(c is UnityEngine.Animations.IConstraint)Object.DestroyImmediate(c);
         foreach(var t in actor.GetComponentsInChildren<Transform>(true)) GameObjectUtility.RemoveMonoBehavioursWithMissingScript(t.gameObject);
         // Humanoid correspondence is the original exporter's explicit source mapping.
-        var source = JObject.Parse(File.ReadAllText("/work/motion-bake/task-L/actor-export/source.json"));
+        var source = JObject.Parse(File.ReadAllText(Environment.GetEnvironmentVariable("U_SOURCE_JSON") ?? "/work/motion-bake/task-L/actor-export/source.json"));
         var bones = actor.GetComponentsInChildren<Transform>(true);
         var human = new Dictionary<Transform,string>();
         foreach(var h in source["human"])
@@ -79,7 +80,7 @@ public static class NativeActorExport
         foreach(var t in bones) {t.localScale=Vector3.one;t.position=worldPositions[t];t.rotation=worldRotations[t];}
         var dynamics = actor.GetComponentsInChildren<ActorSwingDynamicBone>(true).Where(b=>!b.name.StartsWith("__SwingTip")).ToArray();
         var keep = new HashSet<Transform>(human.Keys.Concat(dynamics.Select(b=>b.transform)));
-        foreach(var b in actor.GetComponentsInChildren<ActorSwingStaticBone>(true)) keep.Add(b.transform);
+        foreach(var b in actor.GetComponentsInChildren<ActorSwingStaticBone>(true)) Object.DestroyImmediate(b);
         var reference = new GameObject("Reference").transform; reference.SetParent(actor.transform,false);
         var oldNames = bones.ToDictionary(t=>t,t=>t.name);
         foreach(var t in keep.ToArray())
@@ -119,7 +120,7 @@ public static class NativeActorExport
         actor.layer=scaffold.layer;
         foreach(var renderer in scaffold.GetComponentsInChildren<Renderer>(true))Object.DestroyImmediate(renderer.gameObject);
         foreach(var c in scaffold.GetComponentsInChildren<MonoBehaviour>(true))
-            if(c is IActorSwingComponent)Object.DestroyImmediate(c);
+            if(c is ActorSwingDynamicBone || c is ActorSwingChain)Object.DestroyImmediate(c);
         var nativeBones=scaffold.GetComponentsInChildren<Transform>(true).ToDictionary(t=>t.name);
         var redirects=new Dictionary<Transform,Transform>();
         foreach(var pair in human)
@@ -132,6 +133,23 @@ public static class NativeActorExport
         {
             var old=bones.SingleOrDefault(t=>t && oldNames[t]==side+"_"+roll+"Roll");
             if(old)redirects[old]=nativeBones[side+roll+"_Roll_H"];
+        }
+        // Replace source chest/hip helpers with the template's native Breast and Quartz drivers.
+        foreach(var side in new[]{"Left","Right"})
+        {
+            var assist=bones.SingleOrDefault(t=>t && oldNames[t]==side+"_AssistHip");
+            if(assist && nativeBones.TryGetValue(side+"UpLeg_H",out var legHelper))redirects[assist]=legHelper;
+            var bust=dynamics.FirstOrDefault(b=>b && oldNames[b.transform].Replace("_","").Contains(side+"Bust01"));
+            if(bust && nativeBones.TryGetValue(side+"Bust1_S",out var breast))
+            {
+                var bustTransform=bust.transform;redirects[bustTransform]=breast;
+                foreach(var sourceBone in bustTransform.GetComponentsInChildren<Transform>(true))
+                {
+                    keep.Remove(sourceBone);
+                    if(sourceBone!=bustTransform && nativeBones.TryGetValue(side+"Bust2_S_End",out var breastEnd))redirects[sourceBone]=breastEnd;
+                    var swing=sourceBone.GetComponent<ActorSwingDynamicBone>();if(swing)Object.DestroyImmediate(swing);
+                }
+            }
         }
         foreach(var child in scaffold.transform.Cast<Transform>().ToArray())child.SetParent(actor.transform,false);
         Object.DestroyImmediate(scaffold);
@@ -198,6 +216,7 @@ public static class NativeActorExport
             serialized.ApplyModifiedPropertiesWithoutUndo();
         }
         foreach(var old in scriptCopies.Keys)Object.DestroyImmediate(old);
+        NativeChainRestructure.Apply(actor,oldNames);
         var head=nativeBones["Head"];
         var parts=new Dictionary<string,GameObject>{{"body",actor}};
         foreach(var suffix in new[]{"hair","face"})
@@ -205,6 +224,7 @@ public static class NativeActorExport
             var part=new GameObject(suffix=="hair"?"mdl_chr_ttmr-cstm-0003_hair":"mdl_chr_ttmr-base-0000_face");parts[suffix]=part;part.layer=actor.layer;
             var root=new GameObject("Head_"+(suffix=="hair"?"Hair":"Face")).transform;
             root.SetParent(part.transform,false);root.position=head.position;root.rotation=head.rotation;
+            if(suffix=="hair")foreach(var driver in actor.GetComponentsInChildren<ActorAnimationQuartzDriverHairBone>(true).Where(d=>d.name.StartsWith("NativeHairQuartz_")))driver.transform.SetParent(root,true);
             if(suffix=="hair")foreach(var b in actor.GetComponentsInChildren<ActorSwingDynamicBone>(true).Where(b=>oldNames.ContainsKey(b.transform) && oldNames[b.transform].ToLowerInvariant().Contains("hair")))
             {
                 if(!b.transform.parent.name.Contains("_S"))b.transform.SetParent(root,true);
@@ -223,13 +243,14 @@ public static class NativeActorExport
         {
             foreach(var bone in part.GetComponentsInChildren<ActorSwingDynamicBone>(true).Where(b=>!b.transform.parent.GetComponent<ActorSwingDynamicBone>()))
             {
+                if(part.GetComponentsInChildren<ActorSwingChain>(true).Any(c=>c.rootBones.Contains(bone)))continue;
                 var chain=bone.gameObject.AddComponent<ActorSwingChain>();chain.rootBones.Add(bone);chain.UpdateChainInfo();
             }
         }
         // Source arm roll influences use the native template Quartz roll bones.
         // TODO(qa-recon): measure motion-space twist residual against the original PJSK drivers.
-        // TODO(qa-recon): source AssistHip leg-helper drivers are not reconstructed;
-        // their influences fold to UpLeg and lose the source helper deformation.
+        // Native UpLeg Quartz and Breast drivers replace source hip/chest helpers.
+        // TODO(qa-recon): quantify animation-space deformation residual for these mappings.
         var paths=new List<string>();
         foreach(var suffix in new[]{"body","hair","face"})
         {
