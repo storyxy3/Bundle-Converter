@@ -25,8 +25,15 @@ def main():
     s = sub.add_parser("inspect-stage"); s.add_argument("--game", required=True); s.add_argument("--bundles", required=True); s.add_argument("--scene", required=True)
     s = sub.add_parser("pjsk-twist"); s.add_argument("--skeleton", required=True); s.add_argument("bundles", nargs="+")
     s = sub.add_parser("pjsk-stage-materials"); s.add_argument("bundles", nargs="+")
+    s = sub.add_parser("live-music", help="Unity AudioClip to audio-file/1")
+    s.add_argument("--bundle", required=True); s.add_argument("--out", required=True)
+    s.add_argument("--vgmstream", default="vgmstream-cli")
+    s.add_argument("--deobfuscator"); s.add_argument("--bundle-name")
     a = p.parse_args()
-    if a.cmd == "skeleton":
+    if a.cmd == "live-music":
+        from haruki_convert import live_music
+        live_music.export(a.bundle, a.out, a.vgmstream, a.deobfuscator, a.bundle_name)
+    elif a.cmd == "skeleton":
         from haruki_convert import skeleton; skeleton.export(a.game, a.bundle, a.out, a.root)
     elif a.cmd == "humanoid-curves":
         from haruki_convert import humanoid_curves; humanoid_curves.export(a.game, a.bundle, a.out, a.rate)
