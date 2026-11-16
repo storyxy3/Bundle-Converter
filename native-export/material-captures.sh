@@ -3,10 +3,10 @@ set -euo pipefail
 for actor in ${V_CAPTURE_ACTORS:-ichika miku}; do
  for variant in off no-hair no-face no-classes no-skin no-outline no-eyes no-mapping all; do
   if [[ -f /work/gakumas/work/codex/HANDOFF_NOW ]]; then echo HANDOFF_NOW; exit 75; fi
-  if grep -aq LIVE_QUIT "/work/motion-bake/task-V/captures/$actor/$variant/player.log" 2>/dev/null; then
+  if grep -aq LIVE_QUIT "/work/motion-bake/task-W/captures/$actor/$variant/player.log" 2>/dev/null; then
    if python3 - "$actor" "$variant" <<'PY_CACHE'
 import hashlib,json,pathlib,sys
-root=pathlib.Path('/work/motion-bake/task-V');actor,variant=sys.argv[1:];manifest=root/'content'/(actor+'-'+variant)/'manifest.json'
+root=pathlib.Path('/work/motion-bake/task-W');actor,variant=sys.argv[1:];manifest=root/'content'/(actor+'-'+variant)/'manifest.json'
 if not manifest.exists():sys.exit(1)
 entries={e['name']:e for e in json.loads(manifest.read_text())['bundles']}
 paths=list((root/'output'/actor/variant).glob('mdl*.unity3d'))

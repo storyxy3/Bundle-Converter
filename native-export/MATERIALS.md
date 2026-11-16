@@ -1,6 +1,6 @@
-Task V offline material authoring
+Tasks V/W offline material authoring
 
-Read both codex/COMMON.md files first. NativeActorExport/NativeChainRestructure and player runtime sources are unchanged. This pass reads U's already-exported native bundles and writes separate variant bundles under task-V/output. It keeps native shader references and components; no runtime adapter or custom shader is emitted.
+Read both codex/COMMON.md files first. NativeActorExport/NativeChainRestructure and player runtime sources are unchanged. This pass reads U's already-exported native bundles and writes separate variant bundles under task-W/output (historical V outputs stay under task-V). It keeps native shader references and components; no runtime adapter or custom shader is emitted.
 
 Dependencies: existing Gakumas Python venv (UnityPy, Pillow, NumPy) and system SciPy via PYTHONPATH=/usr/lib/python3/dist-packages. No dependency installation required.
 
@@ -32,3 +32,38 @@ Compile-only check, no tests:
 Generated textures copy native per-slot colour-space and sampler settings; DefMap data stays linear. Face authoring transfers the native ShadeMap skin alpha as well as DefMap channels. Body class authoring infers missing skin alpha from warm source colours; hair always uses the native hair G/B/A preset. Eye defaults use native eye-class channel medians. Native RampAdd is enabled only by its authoring pass; unrelated sweat layers remain disabled.
 
 Miku mapping also routes connected static hair-cap charts from U's face mesh to its existing hair mesh. Seeds use source hair chroma, existing hair boundaries and the native eye-proxy band; warm skin and native eye classes are protected. Original face correspondence bounds are retained so routing does not change eye classification. Mesh indices and bounds change; vertices, bind poses and skin weights do not. Current result moves 725 triangles.
+
+Task W skin decomposition and default (offline authoring only)
+
+The default output root is now task-W (V_ROOT still overrides it). Copy the existing V survey's ramps.json,
+presets.json and mdl_chr_*.png to task-W/survey; these are read-only inputs reused from V's completed census.
+The skin switch defaults to --skin-mode source: source facial ShadowTex/BaseMap linear-light median ratio,
+with RGB transitioning from white to that ratio using the selected native alpha curve; native RGBA dimensions,
+alpha texels, texture sampling metadata, skin masks and runtime saturation rule remain in use.
+--skin-mode nearest selects V's previous nearest-native RGBA ramp unchanged. Skin OFF keeps U's constant ramp.
+This is a converter authoring policy, not a recovered game method or a claim of source-render parity.
+
+Repeat the complete decomposition (each capture retains V's ttmr001 camera/seek/frame protocol):
+  PYTHONPATH=/usr/lib/python3/dist-packages /work/gakumas/tools/venv/bin/python /work/motion-bake/task-U/skin-study.py
+  bash /work/motion-bake/task-U/skin-source-captures.sh
+  python3 /work/motion-bake/task-U/skin-figures.py
+The source capture uses task-W/source-capture.mjs and task-W/vite.config.ts with the unchanged Prsk-3D WebGL player,
+loopback in a private network namespace, and source-costume master data routed in memory. Its all001 pose/scene
+is a separate appearance reference, not a matched ttmr001 comparison. Runtime code is unchanged.
+
+Generate the production default or the old switch explicitly:
+  PYTHONPATH=/usr/lib/python3/dist-packages /work/gakumas/tools/venv/bin/python /work/motion-bake/task-U/material-native.py --actor ichika --variant default --enable hair,face,classes,skin,outline,eyes,mapping
+  PYTHONPATH=/usr/lib/python3/dist-packages /work/gakumas/tools/venv/bin/python /work/motion-bake/task-U/material-native.py --actor miku --variant legacy-skin --enable hair,face,classes,skin,outline,eyes,mapping --skin-mode nearest
+Capture a generated production variant:
+  bash /work/motion-bake/task-U/material-capture.sh ichika default
+Use a distinct production label (default above) to retain the study's reference assets. The study's all is V's
+legacy RGBA reference; the material tool's all uses the new default source tint. The study's off means V all-minus-skin (all other passes ON); it differs from the material tool's off (all passes OFF).
+Study saturation variants set the native timeline Volume skinSaturation overrides to 0 (shader multiplier 1),
+instead of changing runtime code or adding an ineffective per-material property. Study mask variants restore U's
+source-converted ShadeMap alpha (before V face transfer/body inference), with Miku's source-backed mapping repair.
+metrics.csv uses fixed interior polygons and a fixed darkest-baseline-quartile screen-space shadow proxy; it does
+not recover ramp U or an anatomical visibility mask. Source-scene deltaE values include different lighting.
+
+The faithful mode explicitly uses the native RampMap RGBA32 format (4); this avoids re-encoding its alpha
+through Miku hair's inherited compressed source template. The nearest mode retains V's previous texture output.
+CPU software captures default to LP_NUM_THREADS=16; camera, quality, sample time and native runtime are unchanged.

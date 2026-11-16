@@ -1,5 +1,6 @@
 # Offline native material authoring; runtime/player files are never changed.
-import copy,json,pathlib,struct,warnings,os
+import copy,json,pathlib,struct,warnings,os,runpy
+SKIN=runpy.run_path(str(pathlib.Path(__file__).with_name("skin-ramp.py")))
 import UnityPy,numpy as np
 from PIL import Image
 from scipy.spatial import cKDTree
@@ -9,7 +10,7 @@ from UnityPy.streams import EndianBinaryReader
 def refresh(o):
  if o.data is not None:o.reader=EndianBinaryReader(o.data,endian=o.reader.endian);o.byte_start=0;o.byte_size=len(o.data)
 UnityPy.config.FALLBACK_UNITY_VERSION='6000.0.77f1';warnings.simplefilter('ignore')
-ROOT=pathlib.Path(os.environ.get('V_ROOT','/work/motion-bake/task-V')); U=pathlib.Path(os.environ.get('V_U_ROOT','/work/motion-bake/task-U'))
+ROOT=pathlib.Path(os.environ.get('V_ROOT','/work/motion-bake/task-W')); U=pathlib.Path(os.environ.get('V_U_ROOT','/work/motion-bake/task-U'))
 SWITCHES=('hair','face','classes','skin','outline','eyes','mapping')
 def load(p):return UnityPy.load(str(p))
 def mesh(o):
@@ -26,9 +27,11 @@ def image_at(im,uv):
 def texref(d,k):return dict(d['m_SavedProperties']['m_TexEnvs']).get(k,{}).get('m_Texture',{}).get('m_PathID',0)
 def setref(d,k,pid):
  ts=dict(d['m_SavedProperties']['m_TexEnvs']);ts[k]={'m_Texture':{'m_FileID':0,'m_PathID':pid},'m_Scale':{'x':1.,'y':1.},'m_Offset':{'x':0.,'y':0.}};d['m_SavedProperties']['m_TexEnvs']=list(ts.items())
-def import_texture(owner,im,name):
+def import_texture(owner,im,name,texture_format=None):
  template=next(o for o in owner.objects.values() if o.type.name=='Texture2D');o=copy.copy(template);o.path_id=max(owner.objects)+1;o.data=template.get_raw_data();owner.objects[o.path_id]=o
- t=o.read();t.m_Name=name;t.image=im
+ t=o.read();t.m_Name=name
+ if texture_format is not None:t.m_TextureFormat=texture_format
+ t.image=im
  # Copy native per-slot sampling semantics; data maps must not inherit an sRGB base-map template.
  for key in ('_BaseMap','_ShadeMap','_DefMap','_RampMap','_RampAddMap','_HighlightMap','_ReflectionSphereMap'):
   if not name.endswith(key):continue
@@ -139,8 +142,21 @@ def character_skin(actor):
  if not mask.any():raise ValueError('No source facial skin samples; supply a skin mask rather than selecting by clothing colour')
  tone=np.median(b[:,:,:3][mask],axis=0);catalogue=json.loads((ROOT/'survey/ramps.json').read_text());choice=min(catalogue,key=lambda r:np.linalg.norm(np.array(r['tone'])-tone));return tone,choice
 
-def run(actor,label,enabled):
+def character_shadow(actor):
+ if actor=='miku':
+  sm=json.loads((U/'miku/source.json').read_text())['parts'][1]['materials'][0];tx=sm['textures'];base=Image.open(U/'miku'/tx['_MainTex']['file']).convert('RGBA');shade=Image.open(U/'miku'/tx['_ShadowTex']['file']).convert('RGBA').resize(base.size)
+  value=np.array(Image.open(U/'miku'/tx['_ValueTex']['file']).resize(base.size));mask=value[:,:,0]>127
+  images=[]
+  for im,key in ((base,'_DefaultSkinColor'),(shade,'_Shadow1SkinColor')):
+   a=np.array(im);a[:,:,:3][mask]=(a[:,:,:1][mask]*[sm['colors'][key][k] for k in 'rgb']).astype('uint8');images.append(Image.fromarray(a))
+  base,shade=images
+ else:
+  e=load(U/'actor-out/mdl_chr_ttmr-base-0000_face.unity3d');o=next(o for o in e.objects if o.type.name=='Material' and dict(o.read_typetree()['m_SavedProperties']['m_Floats']).get('_ShaderType')==9);d=o.read_typetree();base=pixels(o.assets_file.objects[texref(d,'_BaseMap')]);shade=pixels(o.assets_file.objects[texref(d,'_ShadeMap')])
+ return SKIN['source_ratio'](base,shade)
+
+def run(actor,label,enabled,skin_mode="source"):
  skin_selection=character_skin(actor) if 'skin' in enabled else None
+ shadow_selection=character_shadow(actor) if 'skin' in enabled and skin_mode=='source' else None
  source=U/('actor-out' if actor=='ichika' else 'miku/actor-out');out=ROOT/'output'/actor/label;out.mkdir(parents=True,exist_ok=True);report=[];repaired=repair_miku_hair(source,report) if actor=='miku' and 'mapping' in enabled else {}
  for p in sorted(source.glob('mdl*.unity3d')):
   part='face' if '_face.' in p.name else 'hair' if '_hair.' in p.name else 'body'
@@ -170,8 +186,8 @@ def run(actor,label,enabled):
      if sourcekey:im=Image.open(U/'miku'/sm['textures'][sourcekey]['file']).convert('RGBA')
      else:im=donor_image(8 if part=='hair' else 9 if part=='face' else 0,k)
      report.append({'repairedEmptyUTexture':k,'material':d['m_Name']});put(k,im);return im
-   def put(k,im):
-    if im is not None:setref(d,k,import_texture(owner,im,'V_'+d['m_Name']+k))
+   def put(k,im,texture_format=None):
+    if im is not None:setref(d,k,import_texture(owner,im,'V_'+d['m_Name']+k,texture_format))
    base=get('_BaseMap');shade=get('_ShadeMap');de=get('_DefMap')
    if 'mapping' in enabled and actor=='miku':
     # Prepared Miku maps retained unrelated body secondary textures: replace those using the actual base texture.
@@ -209,8 +225,11 @@ def run(actor,label,enabled):
       offset=stream.offset+i*stream.stride+mc['offset']+1;buf[offset]=(buf[offset]&240)|rows.get(str(cls),0)
      md['m_VertexData']['m_DataSize']=bytes(buf);mo.save_typetree(md);refresh(mo);report.append({'material':d['m_Name'],'classRampAddRows':rows,'donor':'mdl_chr_ttmr-cstm-0003_body/Geo_Body'})
    if 'skin' in enabled:
-    # Temari native ramp; nearest-tone catalogue selection follows the completed census.
-    tone,choice=skin_selection;put('_RampMap',Image.open(ROOT/'survey'/choice['ramp']).convert('RGBA'));report.append({'material':d['m_Name'],'skinRamp':choice,'sourceTone':tone.tolist()})
+    # Selected native curve, optionally tinted from the character source ShadowTex.
+    tone,choice=skin_selection;ramp=Image.open(ROOT/'survey'/choice['ramp']).convert('RGBA')
+    if skin_mode=='source':ramp=SKIN['faithful'](ramp,shadow_selection[0])
+    # Native ramps use RGBA32 (4); source hair templates can otherwise recompress their alpha.
+    put('_RampMap',ramp,4 if skin_mode=='source' else None);report.append({'material':d['m_Name'],'skinRamp':choice,'sourceTone':tone.tolist(),'skinMode':skin_mode,'sourceShadow':shadow_selection[1] if shadow_selection else None})
    if 'hair' in enabled and typ==8:
     native_hi=donor_image(8,'_HighlightMap');profile=np.asarray(native_hi).mean(axis=1);uv=arr(primary.m_UV0)[:,:2];v=arr(primary.m_Vertices);axis=np.linalg.lstsq(np.column_stack((uv,np.ones(len(uv)))),v[:,1],rcond=None)[0][:2];axis/=max(np.linalg.norm(axis),1e-8);yy,xx=np.mgrid[0:base.height,0:base.width];t=(xx/base.width*axis[0]+(1-yy/base.height)*axis[1]);t=(t-t.min())/max(np.ptp(t),1e-8);hi=profile[np.clip((t*(len(profile)-1)).astype(int),0,len(profile)-1)].copy();b=np.asarray(base).astype(float);st=dict(d['m_SavedProperties']['m_TexEnvs'])['_BaseMap'];active=np.unique([i for sub in primary.get_triangles() for tri in sub for i in tri]);samples=image_at(base,uv[active]*[st['m_Scale']['x'],st['m_Scale']['y']]+[st['m_Offset']['x'],st['m_Offset']['y']]);color=np.median(samples[:,:3],axis=0);hi[:,:,:3]=hi[:,:,:3]/np.maximum(hi[:,:,:3].mean((0,1)),1)*color;put('_HighlightMap',Image.fromarray(np.clip(hi,0,255).astype('uint8')))
     _,nd=native[8];co=dict(d['m_SavedProperties']['m_Colors']);co.update({k:v for k,v in nd['m_SavedProperties']['m_Colors'] if 'Highlight' in k or '_SpecularThreshold'==k});d['m_SavedProperties']['m_Colors']=list(co.items())
@@ -222,6 +241,6 @@ def run(actor,label,enabled):
  (out/'report.json').write_text(json.dumps({'enabled':sorted(enabled),'meshes':report},indent=2));print(actor,label,flush=True)
 if __name__=='__main__':
  import argparse
- p=argparse.ArgumentParser();p.add_argument('--actor',choices=['ichika','miku'],required=True);p.add_argument('--variant',required=True);p.add_argument('--enable',help='Comma-separated independent switches; overrides the variant preset');a=p.parse_args();enabled=set(a.enable.split(',') if a.enable else SWITCHES if a.variant=='all' else set(SWITCHES)-{a.variant[3:]} if a.variant.startswith('no-') else [] if a.variant=='off' else [a.variant]);unknown=enabled-set(SWITCHES)
+ p=argparse.ArgumentParser();p.add_argument('--skin-mode',choices=['source','nearest'],default='source',help='Source ShadowTex tint with native alpha (default), or V nearest native RGBA');p.add_argument('--actor',choices=['ichika','miku'],required=True);p.add_argument('--variant',required=True);p.add_argument('--enable',help='Comma-separated independent switches; overrides the variant preset');a=p.parse_args();enabled=set(a.enable.split(',') if a.enable else SWITCHES if a.variant=='all' else set(SWITCHES)-{a.variant[3:]} if a.variant.startswith('no-') else [] if a.variant=='off' else [a.variant]);unknown=enabled-set(SWITCHES)
  if unknown:p.error('Unknown switches: '+','.join(sorted(unknown)))
- run(a.actor,a.variant,enabled)
+ run(a.actor,a.variant,enabled,a.skin_mode)
