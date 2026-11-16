@@ -154,7 +154,7 @@ def character_shadow(actor):
   e=load(U/'actor-out/mdl_chr_ttmr-base-0000_face.unity3d');o=next(o for o in e.objects if o.type.name=='Material' and dict(o.read_typetree()['m_SavedProperties']['m_Floats']).get('_ShaderType')==9);d=o.read_typetree();base=pixels(o.assets_file.objects[texref(d,'_BaseMap')]);shade=pixels(o.assets_file.objects[texref(d,'_ShadeMap')])
  return SKIN['source_ratio'](base,shade)
 
-def run(actor,label,enabled,skin_mode="source"):
+def run(actor,label,enabled,skin_mode="source",skin_base="source"):
  skin_selection=character_skin(actor) if 'skin' in enabled else None
  shadow_selection=character_shadow(actor) if 'skin' in enabled and skin_mode=='source' else None
  source=U/('actor-out' if actor=='ichika' else 'miku/actor-out');out=ROOT/'output'/actor/label;out.mkdir(parents=True,exist_ok=True);report=[];repaired=repair_miku_hair(source,report) if actor=='miku' and 'mapping' in enabled else {}
@@ -224,6 +224,14 @@ def run(actor,label,enabled,skin_mode="source"):
      for i,cls in enumerate(region[iy,ix]):
       offset=stream.offset+i*stream.stride+mc['offset']+1;buf[offset]=(buf[offset]&240)|rows.get(str(cls),0)
      md['m_VertexData']['m_DataSize']=bytes(buf);mo.save_typetree(md);refresh(mo);report.append({'material':d['m_Name'],'classRampAddRows':rows,'donor':'mdl_chr_ttmr-cstm-0003_body/Geo_Body'})
+   if 'skin' in enabled and typ==9:
+    # Native transfer can miss source cheeks/chin. Infer the same pale/warm source skin used for body classes.
+    a=np.array(shade);b=np.array(base.resize(shade.size)).astype(float);inferred=(b[:,:,0]>b[:,:,1]*1.02)&(b[:,:,0]>b[:,:,2]*1.01)&(b[:,:,:3].min(2)>120)
+    before=int((a[:,:,3][inferred]>127).sum());a[:,:,3][inferred]=255;put('_ShadeMap',Image.fromarray(a),4);shade=get('_ShadeMap');report.append({'material':d['m_Name'],'sourceFaceSkinSamples':int(inferred.sum()),'coveredBefore':before,'coveredAfter':int(inferred.sum())})
+   if 'skin' in enabled and skin_base=='native' and typ in (0,1,9):
+    reference=donor_image(0,'_BaseMap');reference_mask=np.array(donor_image(0,'_ShadeMap').resize(reference.size))[:,:,3]>127
+    adjusted,policy=SKIN['native_base'](base,reference,reference_mask);st=copy.deepcopy(dict(d['m_SavedProperties']['m_TexEnvs'])['_BaseMap']);put('_BaseMap',adjusted,4)
+    ts=dict(d['m_SavedProperties']['m_TexEnvs']);ts['_BaseMap']['m_Scale']=st['m_Scale'];ts['_BaseMap']['m_Offset']=st['m_Offset'];d['m_SavedProperties']['m_TexEnvs']=list(ts.items());base=get('_BaseMap');report.append({'material':d['m_Name'],'nativeSkinBasePolicy':policy})
    if 'skin' in enabled:
     # Selected native curve, optionally tinted from the character source ShadowTex.
     tone,choice=skin_selection;ramp=Image.open(ROOT/'survey'/choice['ramp']).convert('RGBA')
@@ -241,6 +249,6 @@ def run(actor,label,enabled,skin_mode="source"):
  (out/'report.json').write_text(json.dumps({'enabled':sorted(enabled),'meshes':report},indent=2));print(actor,label,flush=True)
 if __name__=='__main__':
  import argparse
- p=argparse.ArgumentParser();p.add_argument('--skin-mode',choices=['source','nearest'],default='source',help='Source ShadowTex tint with native alpha (default), or V nearest native RGBA');p.add_argument('--actor',choices=['ichika','miku'],required=True);p.add_argument('--variant',required=True);p.add_argument('--enable',help='Comma-separated independent switches; overrides the variant preset');a=p.parse_args();enabled=set(a.enable.split(',') if a.enable else SWITCHES if a.variant=='all' else set(SWITCHES)-{a.variant[3:]} if a.variant.startswith('no-') else [] if a.variant=='off' else [a.variant]);unknown=enabled-set(SWITCHES)
+ p=argparse.ArgumentParser();p.add_argument('--skin-base',choices=['source','native'],default='source',help='Optional native body-skin L/chroma, keeping source Lab hue');p.add_argument('--skin-mode',choices=['source','nearest'],default='source',help='Source ShadowTex tint with native alpha (default), or V nearest native RGBA');p.add_argument('--actor',choices=['ichika','miku'],required=True);p.add_argument('--variant',required=True);p.add_argument('--enable',help='Comma-separated independent switches; overrides the variant preset');a=p.parse_args();enabled=set(a.enable.split(',') if a.enable else SWITCHES if a.variant=='all' else set(SWITCHES)-{a.variant[3:]} if a.variant.startswith('no-') else [] if a.variant=='off' else [a.variant]);unknown=enabled-set(SWITCHES)
  if unknown:p.error('Unknown switches: '+','.join(sorted(unknown)))
- run(a.actor,a.variant,enabled,a.skin_mode)
+ run(a.actor,a.variant,enabled,a.skin_mode,a.skin_base)

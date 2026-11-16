@@ -67,3 +67,31 @@ not recover ramp U or an anatomical visibility mask. Source-scene deltaE values 
 The faithful mode explicitly uses the native RampMap RGBA32 format (4); this avoids re-encoding its alpha
 through Miku hair's inherited compressed source template. The nearest mode retains V's previous texture output.
 CPU software captures default to LP_NUM_THREADS=16; camera, quality, sample time and native runtime are unchanged.
+
+## Task X: native skin reference and optional skin base
+
+`skin` now fills missed pale/warm source facial texels in the transferred native
+ShadeMap alpha, using the same source colour inference as body classes. This is
+an inferred converter mask, not artist-labelled segmentation. Arms/legs keep their
+existing masks. Native thresholds, normals, ramp alpha and saturation rule stay in
+use. `--skin-mode source` still derives shadow tint from original source maps.
+
+The opt-in `--skin-base native` maps the source skin median Lab lightness/chroma
+to Temari's native body-skin median. Each source texel retains its Lab hue before
+sRGB gamut clipping and rounding; source lightness variation is retained. It uses
+one reference across face/body to avoid authoring a different palette per part.
+This is a style policy, not recovered game code or an exact native match. The
+default `--skin-base source` retains the source BaseMap. The pale/warm inference
+has the same limitations as the existing body class inference.
+
+```bash
+# X survey is a local copy of W's catalogue; V_ROOT controls output location.
+V_ROOT=/work/motion-bake/task-X PYTHONPATH=/usr/lib/python3/dist-packages \
+ /work/gakumas/tools/venv/bin/python /work/motion-bake/task-U/material-native.py \
+ --actor ichika --variant fixed --enable hair,face,classes,skin,outline,eyes,mapping \
+ --skin-mode source --skin-base native
+# Asset probes / captures use the existing unchanged native player:
+PYTHONPATH=/usr/lib/python3/dist-packages LP_NUM_THREADS=8 \
+ /work/gakumas/tools/venv/bin/python /work/motion-bake/task-U/skin-native-study.py ichika fixed
+python3 /work/motion-bake/task-U/skin-native-figures.py
+```
