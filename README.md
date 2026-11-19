@@ -3,6 +3,11 @@
 A conversion platform for content from other games and tools (skeletons, motions, stages; later faces, cameras, audio)
 into Haruki formats the PJSK player loads. Tooling, not game code: the player never runs it.
 
+Split out of Team-Haruki/Prsk-3D (`tools/converter`). Paths in the scripts and docs assume a work root at `/work`
+(game data, toolchains, task outputs) and a build host reachable as `jp01-host` (see `jp01.sh`); symlink `/work` or
+adjust them for your machine. Some tools reuse the player's code: `remux-audio.ts` imports Prsk-3D's
+`src/original/unityAudioClip.ts`, so run it from a Prsk-3D checkout.
+
 ## Shape
 
 - **Sources** read another game's data. Unity games share `haruki_convert/unity_assets.py` (bundle closures, PPtr
